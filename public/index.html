@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' http: https: ws: wss: blob:; style-src 'self' 'unsafe-inline' https: cdn.tailwindcss.com; script-src 'self' 'unsafe-inline' https: cdn.tailwindcss.com cdn.jsdelivr.net; script-src-attr 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' ws: wss: http: https:; font-src 'self' https: cdn.jsdelivr.net; form-action 'self' http: https:">
+    <title>DevRelay - Real-time Developer Chat</title>
+
+    <!-- Redirect HTTPS to HTTP for local network access -->
+    <script>
+        if (window.location.protocol === 'https:') {
+            window.location.replace('http://' + window.location.host + window.location.pathname + window.location.search);
+        }
+    </script>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        mono: ['JetBrains Mono', 'Fira Code', 'Consolas', 'monospace'],
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: {
+                            50: '#e8f5e9',
+                            100: '#c8e6c9',
+                            200: '#a5d6a7',
+                            300: '#81c784',
+                            400: '#66bb6a',
+                            500: '#25D366',  // WhatsApp green
+                            600: '#128C7E',  // WhatsApp dark green
+                            700: '#075E54',  // WhatsApp darker green
+                            800: '#054d44',
+                            900: '#03352f',
+                        },
+                        whatsapp: {
+                            green: '#25D366',
+                            darkGreen: '#128C7E',
+                            darkerGreen: '#075E54',
+                            lightGreen: '#DCF8C6', // Message bubble
+                            bg: '#E5DDD5', // Chat background
+                            bgDark: '#0B141A',
+                        },
+                        dark: {
+                            bg: '#111B21',
+                            card: '#1F2C34',
+                            border: '#2A3942',
+                            text: '#E9EDEF',
+                            muted: '#8696A0',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+        rel="stylesheet">
+
+    <!-- Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <!-- External CSS -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body class="bg-gray-50 dark:bg-dark-bg text-gray-900 dark:text-dark-text font-sans min-h-screen overflow-x-hidden">
+
+    <!-- Login Screen -->
+    <div id="login-screen" class="min-h-screen flex items-center justify-center p-4">
+        <div
+            class="bg-white dark:bg-dark-card rounded-2xl shadow-xl w-full max-w-md p-4 sm:p-6 md:p-8 border border-gray-200 dark:border-dark-border overflow-hidden">
+            <div class="text-center mb-6 sm:mb-8">
+                <div
+                    class="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl mb-4">
+                    <i class="fa-solid fa-share-nodes text-2xl text-white"></i>
+                </div>
+                <h1 class="text-2xl md:text-3xl font-bold mb-2">DevRelay</h1>
+                <p class="text-gray-500 dark:text-dark-muted text-sm">Real-time developer chat & file sharing</p>
+            </div>
+
+            <form id="join-form" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium mb-2">Your Name</label>
+                    <input type="text" id="user-name" placeholder="Enter your name"
+                        class="w-full px-4 py-3 rounded-xl bg-gray-100 dark:bg-dark-bg border border-gray-300 dark:border-dark-border 
+                               focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all" required maxlength="50">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium mb-2">Room</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="room-id" placeholder="Enter room ID or generate new"
+                            class="flex-1 px-4 py-3 rounded-xl bg-gray-100 dark:bg-dark-bg border border-gray-300 dark:border-dark-border 
+                                   focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all" maxlength="100">
+                        <button type="button" id="generate-room" class="px-3 py-3 bg-gray-200 dark:bg-dark-border hover:bg-gray-300 dark:hover:bg-gray-600 
+                                   rounded-xl transition-colors text-sm font-medium whitespace-nowrap shrink-0">
+                            <i class="fa-solid fa-dice"></i> <span class="hidden sm:inline">Random</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2 p-3 bg-primary-50 dark:bg-primary-900/20 rounded-xl">
+                    <input type="checkbox" id="default-room" class="w-4 h-4 accent-primary-500">
+                    <label for="default-room" class="text-sm text-primary-700 dark:text-primary-300">
+                        Join default "dev-room"
+                    </label>
+                </div>
+
+                <button type="submit"
+                    class="w-full py-3 px-4 bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 
+                           text-white font-semibold rounded-xl transition-all transform hover:scale-[1.02] active:scale-[0.98]">
+                    <i class="fa-solid fa-arrow-right-to-bracket mr-2"></i> Join Room
+                </button>
+            </form>
+
+            <div id="qr-section" class="mt-6 pt-6 border-t border-gray-200 dark:border-dark-border hidden">
+                <p class="text-sm text-center text-gray-500 dark:text-dark-muted mb-4">
+                    Scan to join on mobile
+                </p>
+                <div id="qrcode" class="flex justify-center"></div>
+                <p id="room-url" class="text-xs text-center text-gray-400 mt-2 break-all"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Chat Interface (Hidden initially) -->
+    <div id="chat-interface" class="hidden h-screen flex flex-col">
+        <!-- Header -->
+        <header
+            class="bg-white dark:bg-dark-card border-b border-gray-200 dark:border-dark-border px-4 py-3 flex items-center justify-between shrink-0">
+            <div class="flex items-center gap-3">
+                <div
+                    class="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-600 rounded-lg flex items-center justify-center">
+                    <i class="fa-solid fa-share-nodes text-lg text-white"></i>
+                </div>
+                <div>
+                    <h2 class="font-semibold">DevRelay</h2>
+                    <p class="text-xs text-gray-500 dark:text-dark-muted flex items-center gap-2">
+                        Room: <span id="current-room" class="font-mono text-primary-600 dark:text-primary-400"></span>
+                        <span
+                            class="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full text-[10px]">
+                            <span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
+                            <span id="user-count">1</span> online
+                        </span>
+                    </p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+                <button id="show-qr-btn"
+                    class="p-2 hover:bg-gray-100 dark:hover:bg-dark-border rounded-lg transition-colors"
+                    title="Show QR Code">
+                    <i class="fa-solid fa-qrcode"></i>
+                </button>
+                <button id="theme-toggle"
+                    class="p-2 hover:bg-gray-100 dark:hover:bg-dark-border rounded-lg transition-colors"
+                    title="Toggle Theme">
+                    <i class="fa-solid fa-sun dark:hidden"></i>
+                    <i class="fa-solid fa-moon hidden dark:inline"></i>
+                </button>
+                <button id="leave-room"
+                    class="px-3 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                    <i class="fa-solid fa-right-from-bracket mr-1"></i> Leave
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <div class="flex-1 flex overflow-hidden">
+            <!-- Sidebar (Users) -->
+            <aside
+                class="hidden md:block w-64 bg-gray-50 dark:bg-dark-bg border-r border-gray-200 dark:border-dark-border overflow-y-auto">
+                <div class="p-4">
+                    <h3 class="text-xs font-semibold text-gray-500 dark:text-dark-muted uppercase tracking-wider mb-3">
+                        Online Users
+                    </h3>
+                    <ul id="users-list" class="space-y-2">
+                        <!-- Users will be added here -->
+                    </ul>
+                </div>
+            </aside>
+
+            <!-- Chat Area -->
+            <main class="flex-1 flex flex-col min-w-0 relative">
+                <!-- Messages Container -->
+                <div id="messages-container" class="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
+                    <!-- Messages will be added here -->
+                </div>
+
+                <!-- Scroll to Bottom Button -->
+                <button id="scroll-down-btn"
+                    class="hidden absolute bottom-24 right-6 p-3 bg-primary-500 hover:bg-primary-600 text-white rounded-full shadow-lg transition-all transform hover:scale-110 z-10">
+                    <i class="fa-solid fa-arrow-down"></i>
+                    <span id="new-messages-badge"
+                        class="hidden absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">1</span>
+                </button>
+
+                <!-- Typing Indicator -->
+                <div id="typing-indicator" class="hidden px-4 py-2 text-sm text-gray-500 dark:text-dark-muted">
+                    <span id="typing-text"></span>
+                    <span class="inline-flex gap-1 ml-1">
+                        <span class="typing-dot w-1.5 h-1.5 bg-gray-500 rounded-full"></span>
+                        <span class="typing-dot w-1.5 h-1.5 bg-gray-500 rounded-full"></span>
+                        <span class="typing-dot w-1.5 h-1.5 bg-gray-500 rounded-full"></span>
+                    </span>
+                </div>
+
+                <!-- Input Area -->
+                <div class="border-t border-gray-200 dark:border-dark-border bg-white dark:bg-dark-card p-4 shrink-0">
+                    <!-- Drag Overlay -->
+                    <div id="drag-overlay"
+                        class="hidden fixed inset-0 bg-primary-500/10 z-50 flex items-center justify-center backdrop-blur-sm">
+                        <div
+                            class="bg-white dark:bg-dark-card rounded-2xl p-8 text-center border-2 border-dashed border-primary-500">
+                            <i class="fa-solid fa-cloud-arrow-up text-4xl text-primary-500 mb-4"></i>
+                            <p class="text-lg font-medium">Drop files to share</p>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-3">
+                        <!-- File Button (Left side) - WhatsApp Green Style -->
+                        <button id="file-btn"
+                            class="w-12 h-12 flex items-center justify-center bg-white dark:bg-dark-card text-[#25D366] border-2 border-[#25D366] hover:bg-[#25D366] hover:text-white rounded-full transition-all duration-200 shrink-0"
+                            title="Attach file">
+                            <i class="fa-solid fa-plus text-lg"></i>
+                        </button>
+                        <input type="file" id="file-input" class="hidden" multiple>
+
+                        <!-- Textarea Container -->
+                        <div class="flex-1 relative">
+                            <textarea id="message-input" rows="1" placeholder="Type a message..."
+                                class="w-full px-4 py-3 pr-12 rounded-2xl bg-gray-100 dark:bg-dark-bg border border-gray-300 dark:border-dark-border 
+                                       focus:outline-none focus:ring-2 focus:ring-[#25D366] focus:border-transparent resize-none transition-all
+                                       font-sans text-sm min-h-[48px] max-h-[300px]" maxlength="50000"></textarea>
+                        </div>
+
+                        <button id="send-btn"
+                            class="w-12 h-12 flex items-center justify-center bg-[#25D366] hover:bg-[#128C7E] text-white rounded-full transition-all duration-200 transform hover:scale-[1.05] active:scale-[0.95] shrink-0">
+                            <i class="fa-solid fa-paper-plane"></i>
+                        </button>
+                    </div>
+
+                    <div class="mt-2 flex items-center justify-between text-xs text-gray-400 px-1">
+                        <span class="hidden md:inline">Press <kbd
+                                class="px-1.5 py-0.5 bg-gray-200 dark:bg-dark-border rounded">Enter</kbd> to send, <kbd
+                                class="px-1.5 py-0.5 bg-gray-200 dark:bg-dark-border rounded">Shift+Enter</kbd> for new
+                            line</span>
+                        <span class="md:hidden">Markdown supported</span>
+                        <span id="character-count" class="hidden">0/50000</span>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- QR Modal -->
+    <div id="qr-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div
+            class="bg-white dark:bg-dark-card rounded-2xl p-6 max-w-sm w-full border border-gray-200 dark:border-dark-border">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="font-semibold">Join Room</h3>
+                <button id="close-qr"
+                    class="p-1 hover:bg-gray-100 dark:hover:bg-dark-border rounded-lg transition-colors">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div id="modal-qrcode" class="flex justify-center mb-4"></div>
+            <p class="text-sm text-center text-gray-500 dark:text-dark-muted mb-4">
+                Scan with your mobile device to join the room
+            </p>
+            <div class="bg-gray-100 dark:bg-dark-bg rounded-lg p-3 mb-4">
+                <p class="text-xs text-gray-500 mb-1">Room URL:</p>
+                <p id="modal-room-url" class="text-sm font-mono break-all text-primary-600 dark:text-primary-400"></p>
+            </div>
+            <button id="copy-url"
+                class="w-full py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors">
+                <i class="fa-solid fa-copy mr-2"></i> Copy Link
+            </button>
+        </div>
+    </div>
+
+    <!-- Image Preview Modal -->
+    <div id="image-modal" class="hidden fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-4">
+        <div class="relative max-w-[90vw] max-h-[90vh]">
+            <button id="close-image-modal"
+                class="absolute -top-12 right-0 p-2 text-white hover:text-gray-300 transition-colors">
+                <i class="fa-solid fa-xmark text-2xl"></i>
+            </button>
+            <img id="modal-image" src="" alt="Preview" class="max-w-full max-h-[85vh] rounded-lg shadow-2xl">
+            <div
+                class="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent rounded-b-lg">
+                <p id="modal-image-name" class="text-white text-sm mb-2"></p>
+                <a id="modal-image-download" href="#" download
+                    class="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors">
+                    <i class="fa-solid fa-download"></i> Download Image
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- File Preview Modal -->
+    <div id="file-modal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+        <div
+            class="bg-white dark:bg-dark-card rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden border border-gray-200 dark:border-dark-border flex flex-col">
+            <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-dark-border">
+                <div class="flex items-center gap-3 min-w-0">
+                    <i class="fa-solid fa-file text-primary-500"></i>
+                    <span id="file-modal-name" class="font-medium truncate"></span>
+                </div>
+                <button id="close-file-modal"
+                    class="p-1 hover:bg-gray-100 dark:hover:bg-dark-border rounded-lg transition-colors">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div id="file-modal-content" class="flex-1 overflow-auto p-4 min-h-[200px]">
+                <!-- File content will be displayed here -->
+            </div>
+            <div class="p-4 border-t border-gray-200 dark:border-dark-border flex justify-end gap-2">
+                <a id="file-modal-download" href="#" download
+                    class="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors">
+                    <i class="fa-solid fa-download mr-2"></i> Download
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2 pointer-events-none"></div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
