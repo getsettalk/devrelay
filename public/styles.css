@@ -155,7 +155,7 @@ html {
     
     /* Ensure message bubbles don't overflow */
     #messages-container > div > div {
-        max-width: 100% !important;
+        max-width: 80% !important;
     }
     
     /* Prevent horizontal scroll in messages */
