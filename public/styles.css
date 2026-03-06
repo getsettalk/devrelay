@@ -144,6 +144,28 @@ html {
     transform: scale(1.02);
 }
 
+/* Mobile responsive images - prevent overflow */
+@media (max-width: 640px) {
+    .message-content img {
+        max-width: 100%;
+        max-height: 200px;
+        width: 100%;
+        height: auto;
+    }
+    
+    /* Ensure message bubbles don't overflow */
+    #messages-container > div > div {
+        max-width: 100% !important;
+    }
+    
+    /* Prevent horizontal scroll in messages */
+    .message-content {
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        max-width: 100%;
+    }
+}
+
 /* Drag and drop zone */
 .drag-active {
     border: 2px dashed #25D366 !important;

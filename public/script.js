@@ -763,6 +763,9 @@
             // Clear textarea as well
             messageInput.value = '';
             messageInput.style.height = 'auto';
+            // Hide character count
+            const count = document.getElementById('character-count');
+            if (count) count.classList.add('hidden');
             return;
         }
         
@@ -772,6 +775,10 @@
         socket.emit('send-message', { text, type: 'text' });
         messageInput.value = '';
         messageInput.style.height = 'auto';
+        
+        // Hide character count
+        const count = document.getElementById('character-count');
+        if (count) count.classList.add('hidden');
         
         // Clear typing indicator
         if (isTyping) {
@@ -903,7 +910,12 @@
             const count = document.getElementById('character-count');
             if (count) {
                 count.textContent = `${this.value.length}/50000`;
-                count.classList.remove('hidden');
+                // Show when typing, hide when empty
+                if (this.value.length > 0) {
+                    count.classList.remove('hidden');
+                } else {
+                    count.classList.add('hidden');
+                }
             }
         });
     }
