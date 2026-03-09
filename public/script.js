@@ -144,14 +144,50 @@
 
     // Socket.IO Connection
     function connectSocket() {
-        socket = io();
+        socket = io({
+            transports: ['websocket', 'polling'], // fallback to polling if websocket fails
+            upgrade: true, // allow upgrading from polling to websocket
+            rememberUpgrade: true, // remember successful upgrade for subsequent connections
+            timeout: 20000, // connection timeout
+            reconnection: true, // enable reconnection
+            reconnectionAttempts: 5, // number of reconnection attempts
+            reconnectionDelay: 1000, // initial delay before reconnection
+            reconnectionDelayMax: 5000, // maximum delay between reconnections
+            maxHttpBufferSize: 10 * 1024 * 1024 // 10MB max file size
+        });
         
         socket.on('connect', () => {
             console.log('Connected to server');
         });
         
-        socket.on('disconnect', () => {
-            showToast('Disconnected from server', 'error');
+        socket.on('disconnect', (reason) => {
+            console.log('Disconnected from server:', reason);
+            if (reason === 'io server disconnect') {
+                // Server initiated disconnect, don't reconnect
+                showToast('Disconnected from server', 'error');
+            } else {
+                // Client initiated disconnect or network error, will reconnect automatically
+                showToast('Connection lost, trying to reconnect...', 'warning');
+            }
+        });
+        
+        socket.on('connect_error', (error) => {
+            console.error('Connection error:', error);
+            showToast('Connection failed, will retry...', 'error');
+        });
+        
+        socket.on('reconnect', (attemptNumber) => {
+            console.log('Reconnected after', attemptNumber, 'attempts');
+            showToast('Reconnected to server!', 'success');
+        });
+        
+        socket.on('reconnect_attempt', (attemptNumber) => {
+            console.log('Reconnection attempt:', attemptNumber);
+        });
+        
+        socket.on('reconnect_failed', () => {
+            console.error('Reconnection failed');
+            showToast('Failed to reconnect to server', 'error');
         });
         
         socket.on('error', (data) => {
@@ -503,17 +539,45 @@
             'application/vnd.ms-excel.sheet.macroEnabled.12'
         ];
         
-        const allowedExts = ['.txt', '.html', '.htm', '.js', '.json', '.css', '.md', '.markdown',
-                               '.pdf', '.xls', '.xlsx', '.xlsm',
-                               '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.mp4', '.webm', '.mov'];
-        const ext = '.' + file.name.split('.').pop().toLowerCase();
+        // Show progress indicator
+        let progressContainer = document.getElementById('upload-progress');
+        let progressBar = document.getElementById('upload-progress-bar');
+        let statusText = null;
         
-        if (!allowedTypes.includes(file.type) && !allowedExts.includes(ext)) {
-            showToast('File type not allowed', 'error');
-            return;
+        if (!progressContainer) {
+            // Create progress container if it doesn't exist
+            progressContainer = document.createElement('div');
+            progressContainer.id = 'upload-progress';
+            progressContainer.className = 'w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden mt-2';
+            progressContainer.innerHTML = '<div id="upload-progress-bar" class="h-full bg-[#25D366] transition-all duration-300" style="width: 0%"></div>';
+            
+            // Insert after the textarea container
+            const textareaContainer = messageInput.parentElement;
+            textareaContainer.appendChild(progressContainer);
+        }
+        
+        progressBar = document.getElementById('upload-progress-bar');
+        statusText = progressContainer.previousElementSibling;
+        
+        if (progressContainer && progressBar) {
+            progressContainer.classList.remove('hidden');
+            if (statusText) {
+                statusText.textContent = 'Uploading file...';
+            }
         }
         
         try {
+            // Simulate upload progress
+            if (progressBar) {
+                progressBar.style.width = '30%';
+                await new Promise(resolve => setTimeout(resolve, 200));
+                progressBar.style.width = '60%';
+                await new Promise(resolve => setTimeout(resolve, 300));
+                progressBar.style.width = '90%';
+                await new Promise(resolve => setTimeout(resolve, 200));
+                progressBar.style.width = '100%';
+            }
+            
             const base64 = await fileToBase64(file);
             socket.emit('send-file', {
                 name: file.name,
@@ -522,9 +586,20 @@
                 data: base64
             });
             showToast('File sent!', 'success');
+            
+            // Clear pending file and progress
+            clearPendingFile();
         } catch (err) {
             showToast('Failed to send file', 'error');
             console.error(err);
+            
+            // Reset progress on error
+            if (progressBar) {
+                progressBar.style.width = '0%';
+            }
+            if (statusText) {
+                statusText.textContent = 'Upload failed';
+            }
         }
     }
 
@@ -611,7 +686,7 @@
             textareaContainer.appendChild(previewContainer);
         }
         
-        // Create preview
+        // Create preview with progress
         const reader = new FileReader();
         reader.onload = (e) => {
             previewContainer.innerHTML = `
@@ -622,6 +697,12 @@
                 <button id="clear-pending-btn" class="p-1 text-gray-500 hover:text-red-500" title="Remove">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
+                <div class="flex-1">
+                    <div class="text-xs text-gray-400 mb-1">Preparing to send...</div>
+                    <div id="upload-progress" class="hidden w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
+                        <div id="upload-progress-bar" class="h-full bg-[#25D366] transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                </div>
             `;
             
             // Add event listener to the clear button
@@ -636,7 +717,7 @@
         };
         reader.readAsDataURL(file);
         
-        showToast('Image ready to send. Press Enter or click send.', 'info');
+        showToast('File ready to send. Press Enter or click send.', 'info');
     }
 
     function clearPendingFile() {
@@ -645,6 +726,38 @@
         if (previewContainer) {
             previewContainer.remove();
         }
+        
+        // Also remove progress bar
+        const progressContainer = document.getElementById('upload-progress');
+        if (progressContainer) {
+            progressContainer.remove();
+        }
+    }
+    
+    function validateFile(file) {
+        // Check file size (10MB limit)
+        if (file.size > 10 * 1024 * 1024) {
+            showToast('File too large. Maximum size is 10MB', 'error');
+            return false;
+        }
+        
+        // Check file type
+        const allowedTypes = [
+            'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
+            'video/mp4', 'video/webm', 'video/quicktime',
+            'text/plain', 'text/html', 'text/javascript', 'application/javascript',
+            'text/css', 'application/json', 'text/markdown',
+            'application/pdf',
+            'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/vnd.ms-excel.sheet.macroEnabled.12'
+        ];
+        
+        if (!allowedTypes.includes(file.type)) {
+            showToast('File type not allowed', 'error');
+            return false;
+        }
+        
+        return true;
     }
 
     // Global image click handler

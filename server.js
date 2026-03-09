@@ -10,7 +10,10 @@ const io = new Server(httpServer, {
     origin: "*",
     methods: ["GET", "POST"]
   },
-  maxHttpBufferSize: 10 * 1024 * 1024 // 10MB max file size
+  maxHttpBufferSize: 10 * 1024 * 1024, // 10MB max file size
+  pingTimeout: 60000, // 60 seconds
+  pingInterval: 25000, // 25 seconds
+  transports: ['websocket', 'polling'] // fallback to polling if websocket fails
 });
 
 // Serve static files
